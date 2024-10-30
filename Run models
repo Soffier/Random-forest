@@ -1,0 +1,33 @@
+#Using Springtime 
+control <- trainControl(method = "cv", number = 10)
+sapply(Spring_model.train, function(x) if(is.factor(x)) length(unique(x)) else NA)
+Springmodel <- train(O3 ~ ., data = Spring_model.train, method = "rf", trControl = control, ntree = 400)
+SpringpredictO3<-predict(Springmodel,Spr_model.validate)
+#model evaluation
+actual_values <- Spr_model.train$O3
+predicted_values <- Spr_model.train$SpringpredictO3
+#if necessary
+actual_values <- na.omit(actual_values)
+predicted_values <- na.omit(predicted_values)
+MSE <- mean((actual_values - predicted_values)^2)
+RMSE <- sqrt(MSE)
+MAE <- mean(abs(actual_values - predicted_values))
+actual_values_adjusted <- ifelse(actual_values == 0, 1e-10, actual_values)
+MRE <- mean(abs((actual_values_adjusted - predicted_values)/actual_values_adjusted))
+mean_actual<- mean(actual_values)
+ss_total <- sum((actual_values - mean_actual)^2)
+ss_res <- sum((actual_values - predicted_values)^2)
+r_squared <- 1 - (ss_res / ss_total)
+#Picture drawing
+ggplot(Spr_model.validate, aes(x = O3, y = SpringpredictO3)) + 
+  geom_point(aes(color = "Predicted")) +   
+  geom_line(aes(y = O3, color = "Actual")) +  
+  labs(title = expression(paste0("Scatter Plot of Actual vs Predicted",O3)), 
+       x = expression(paste0('Actual',O3)), 
+                      y = expression(paste0('Predicted',O3))) +
+  scale_color_manual(values = c("Actual" = "red", "Predicted" = "blue")) 
+#Testing dataset
+O3_test<-subset(O3_model,timestamp > 44561.7)
+O3_test$predictedO3 <- predict(fit.forest_O3, newdata = O3_test)
+       
+
