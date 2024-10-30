@@ -1,0 +1,384 @@
+#Data merge:
+#load data
+#Pollution data
+df_mo <-  read.csv("your path")
+#extract the columns needed
+df_m<df_mo[,c('date_time','date','year','month','day','hour','NO2','SO2','O3','CO','PM10','PM2.5','O3_8')]
+write.csv(monitor,"path")
+df_m$hour_str <- sprintf("%02d", df_m$hour)
+df_m$date_time <- paste(df_m$date, df_m$hour_str, ":00:00", sep = " ")
+df_m$date_time <- as.POSIXct(df_m$date_time, format = "%Y-%m-%d %H :%M",tryFormats = '%Y-%m-%d %H:%M:%S',tz='Asia/Shanghai')
+#Reorder
+df_m <- df_m[order(df_m$date_time), ]
+attr(df_m$date_time,"tzone")
+na_count <- sum(is.na(df_Monitor))
+#Create time sequence
+library(lubridate)
+start_time <- ymd_hms("2018-12-01 00:00:00", tz = "UTC")
+end_time <- ymd_hms("2023-02-28 23:00:00", tz = "UTC")
+time_seq <- seq(from = start_time, to = end_time, by = "hour")
+time_seq_df <- data.frame(time_seq)
+colnames(time_seq_df)<-'date_time'
+head(time_seq_df)
+df_Monitor <- merge(time_seq_df, df_Monitor, by = "date_time", all.x = TRUE)
+df_Monitor$date<-as.Date(df_Monitor$date_time)
+df_Monitor$month <- as.integer(format(df_Monitor$date, "%m"))
+df_Monitor$hour <- as.integer(format(df_Monitor$date_time, "%H"))
+df_Monitor$year <- as.integer(format(df_Monitor$date, "%Y"))
+df_Monitor$day <- as.integer(format(df_Monitor$date, "%d"))
+df_m $season <- sapply(df_m $month, month_to_season)
+#Missing value check
+num_missing_values <- sum(is.na(df_m))
+missing_values_indices <- which(is.na(df_m), arr.ind = TRUE)
+print(missing_values_indices)
+duplicated_indices <- which(duplicated(df_m $date_time) | duplicated(df_m $date_time, fromLast = TRUE))
+duplicated_records <- df_m[duplicated_indices, ]
+for (i in seq_along(duplicated_indices)) {
+  current_index <- duplicated_indices[i]
+  if (i < length(duplicated_indices) && df_m $date_time[current_index] == df_m$date_time[duplicated_indices[i + 1]]) {
+    df_m$date_time[current_index] <- df_m $date_time[current_index] + lubridate::hours(1)
+  }
+}
+df_m$date_time <- lubridate::with_tz(df_m$date_time, tz = "Asia/Shanghai")
+head(df_m)
+df_m$date<-as.Date(format(df_m$date_time, "%Y-%m-%d"))
+df_m $month<-months(df_m $date)
+df_m $month <- as.integer(format(df_m $date, "%m"))
+df_m $hour <- as.integer(format(df_m $date_time, "%H"))
+df_m $year <- as.integer(format(df_m $date, "%Y"))
+df_m $day <- as.integer(format(df_m $date, "%d"))
+df_m $season <- sapply(df_m $month, month_to_season)
+month_to_season<-function(month) {
+  if (month %in% c(12, 1, 2)) {
+    return("winter")
+  } else if (month %in% c(3, 4, 5)) {
+    return("spring")
+  } else if (month %in% c(6, 7, 8)) {
+    return("summer")
+  } else {
+    return("fall")
+  }
+}
+df_m$season <- sapply(df_m$month, month_to_season)
+attr(df_Monitor$date_time, "tzone")
+library('dplyr')
+#load meterological data
+library(openxlsx)
+library(dplyr)
+library(lubridate)
+met_1922<-read.xlsx('C:/Users/Martina/Desktop/met.xlsx')
+colnames(met_1922)[1]<-c('X1')
+colnames(met_1922)
+met_1922$date_time<-as.POSIXct((met_1922$X1)*(24*60*60),origin= '1899-12-30',tz='UTC')
+met_1922$date_time <- as.POSIXct(met_1922$date_time, format = "%Y-%m-%d %H:%M:%S")
+duplicated_indices <- which(duplicated(met$date_time) | duplicated(met$date_time, fromLast = TRUE))
+duplicated_records <- met[duplicated_indices, ]
+date_time<-met_1922$date_time
+date_time[second(date_time) == 59 & minute(date_time) == 59] <- met_1922$date_time[second(date_time) == 59 & minute(date_time) == 59] + seconds(1)
+met_1922$date_time<-date_time
+colnames(met_1922)[1]<-c('timestamp')
+colnames(met_1922)[4]<-c('T2M')
+met <- met_1922 %>%
+  filter(date_time >= as.POSIXct("2018-12-31 23:59:59", tz = "Asia/Shanghai") & 
+           date_time <= as.POSIXct("2022-12-31 23:00:00", tz = "Asia/Shanghai"))
+colnames(met)
+#deal with missing values
+df_m$NO2[is.na(df_m$NO2)] <- 0
+sum(is.na(df_m$NO2))
+overall_nonzero_avg <- mean(df_m$NO2[df_m$NO2 != 0], na.rm = TRUE)
+season_hourly_avg <- df_m %>%
+  filter(NO2 != 0) %>%
+  group_by(season, hour) %>%
+  summarise(AvgValue = mean(NO2, na.rm = TRUE), .groups = 'drop') %>%
+  mutate(AvgValue = if_else(is.na(AvgValue), overall_nonzero_avg, AvgValue))
+sum(is.na(season_hourly_avg$AvgValue))
+df_m <- df_m %>%
+  left_join(season_hourly_avg, by = c("season", "hour")) %>%
+  mutate(NO2 = if_else(NO2 == 0, coalesce(AvgValue, overall_nonzero_avg), NO2)) %>%
+  select(-AvgValue)
+sum(df_m$NO2 == 0, na.rm = TRUE)
+df_m %>%
+  filter(NO2 == 0) %>%
+  head() 
+zero_values_indices <- which(df_m == 0, arr.ind = TRUE)
+print(zero_values_indices)
+df_m$O3[is.na(df_m$O3)] <- 0
+sum(is.na(df_m$O3))
+overall_nonzero_avg <- mean(df_m$O3[df_m$O3 != 0], na.rm = TRUE)
+season_hourly_avg <- df_m %>%
+  filter(O3 != 0) %>%
+  group_by(season, hour) %>%
+  summarise(AvgValue = mean(O3, na.rm = TRUE), .groups = 'drop') %>%
+  mutate(AvgValue = if_else(is.na(AvgValue), overall_nonzero_avg, AvgValue))
+df_m <- df_m %>%
+  left_join(season_hourly_avg, by = c("season", "hour")) %>%
+  mutate(O3= if_else(O3==0, coalesce(AvgValue, overall_nonzero_avg), O3)) %>%
+  select(-AvgValue)
+sum(df_m$O3 == 0, na.rm = TRUE)
+df_Monitor<-df_Monitor[,-16]
+df_m$O3_8[is.na(df_m$O3_8)] <- 0
+sum(is.na(df_m$O3_8))
+overall_nonzero_avg <- mean(df_m$O3_8[df_m$O3_8 != 0], na.rm = TRUE)
+season_hourly_avg <- df_m %>%
+  filter(O3_8!= 0) %>%
+  group_by(season, hour) %>%
+  summarise(AvgValue = mean(O3_8, na.rm = TRUE), .groups = 'drop') %>%
+  mutate(AvgValue = if_else(is.na(AvgValue), overall_nonzero_avg, AvgValue))
+df_m <- df_m %>%
+  left_join(season_hourly_avg, by = c("season", "hour")) %>%
+  mutate(O3_8= if_else(O3_8==0, coalesce(AvgValue, overall_nonzero_avg), O3_8)) %>%
+  select(-AvgValue)
+sum(df_m$O3_8== 0, na.rm = TRUE)
+df_m$PM2.5[is.na(df_m$PM2.5)] <- 0
+sum(is.na(df_m$PM2.5))
+overall_nonzero_avg <- mean(df_m$PM2.5[df_m$PM2.5 != 0], na.rm = TRUE)
+season_hourly_avg <- df_m %>%
+  filter(PM2.5 != 0) %>%
+  group_by(season, hour) %>%
+  summarise(AvgValue = mean(PM2.5, na.rm = TRUE), .groups = 'drop') %>%
+  mutate(AvgValue = if_else(is.na(AvgValue), overall_nonzero_avg, AvgValue))
+df_m <- df_m %>%
+  left_join(season_hourly_avg, by = c("season", "hour")) %>%
+  mutate(PM2.5 = if_else(PM2.5 == 0 & !is.na(AvgValue), AvgValue,PM2.5)) %>%
+  select(-AvgValue)
+sum(df_m$PM2.5 == 0, na.rm = TRUE)
+df_m$PM10[is.na(df_m$PM10)] <- 0
+sum(is.na(df_m$PM10))
+overall_nonzero_avg <- mean(df_m$PM10[df_m$PM10 != 0], na.rm = TRUE)
+season_hourly_avg <- df_m %>%
+  filter(PM10 != 0) %>%
+  group_by(season, hour) %>%
+  summarise(AvgValue = mean(PM10, na.rm = TRUE), .groups = 'drop') %>%
+  mutate(AvgValue = if_else(is.na(AvgValue), overall_nonzero_avg, AvgValue))
+df_m <- df_m %>%
+  left_join(season_hourly_avg, by = c("season", "hour")) %>%
+  mutate(PM10 = if_else(PM10 == 0, coalesce(AvgValue, overall_nonzero_avg), PM10)) %>%
+  select(-AvgValue)
+# Checking
+sum(df_m$PM10 == 0, na.rm = TRUE)
+zero_rows <- df_m %>%
+  filter(PM10 == 0)
+print("Rows with PM10 == 0:")
+print(zero_rows)
+df_m$CO[is.na(df_m$CO)] <- 0
+sum(is.na(df_m$CO))
+overall_nonzero_avg <- mean(df_m$CO[df_m$CO != 0], na.rm = TRUE)
+season_hourly_avg <- df_m %>%
+  filter(CO != 0) %>%
+  group_by(season, hour) %>%
+  summarise(AvgValue = mean(CO, na.rm = TRUE), .groups = 'drop') %>%
+  mutate(AvgValue = if_else(is.na(AvgValue), overall_nonzero_avg, AvgValue))
+df_m <- df_m %>%
+  left_join(season_hourly_avg, by = c("season", "hour")) %>%
+  mutate(CO = if_else(CO == 0, coalesce(AvgValue, overall_nonzero_avg), CO)) %>%
+  select(-AvgValue)
+sum(df_m$CO == 0, na.rm = TRUE)
+zero_rows <- df_m %>%
+  filter(CO == 0)
+print("Rows with CO == 0:")
+print(zero_rows)
+df_m$SO2[is.na(df_m$SO2)] <- 0
+sum(is.na(df_m$SO2))
+overall_nonzero_avg <- mean(df_m$SO2[df_m$SO2 != 0], na.rm = TRUE)
+season_hourly_avg <- df_m %>%
+  filter(SO2 != 0) %>%
+  group_by(season, hour) %>%
+  summarise(AvgValue = mean(SO2, na.rm = TRUE), .groups = 'drop') %>%
+  mutate(AvgValue = if_else(is.na(AvgValue), overall_nonzero_avg, AvgValue))
+df_m <- df_m %>%
+  left_join(season_hourly_avg, by = c("season", "hour")) %>%
+  mutate(SO2 = if_else(SO2 == 0, coalesce(AvgValue, overall_nonzero_avg), SO2)) %>%
+  select(-AvgValue)
+sum(df_m$SO2 == 0, na.rm = TRUE)
+zero_rows <- df_m %>%
+  filter(SO2 == 0)
+print("Rows with SO2 == 0:")
+print(zero_rows)
+met$rh[is.na(met$rh)] <- 0
+sum(is.na(met$rh))
+overall_nonzero_avg <- mean(met$rh[met$rh != 0], na.rm = TRUE)
+season_hourly_avg <- met %>%
+  filter(rh != 0) %>%
+  group_by(season, hour) %>%
+  summarise(AvgValue = mean(rh, na.rm = TRUE), .groups = 'drop') %>%
+  mutate(AvgValue = if_else(is.na(AvgValue), overall_nonzero_avg, AvgValue))
+met <- met %>%
+  left_join(season_hourly_avg, by = c("season", "hour")) %>%
+  mutate(rh = if_else(rh == 0 & !is.na(AvgValue), AvgValue, rh)) %>%
+  select(-AvgValue)
+met$sp[is.na(met$sp)] <- 0
+sum(is.na(met$sp))
+overall_nonzero_avg <- mean(met$sp[met$sp != 0], na.rm = TRUE)
+season_hourly_avg <- met %>%
+  filter(sp != 0) %>%
+  group_by(season, hour) %>%
+  summarise(AvgValue = mean(sp, na.rm = TRUE), .groups = 'drop') %>%
+  mutate(AvgValue = if_else(is.na(AvgValue), overall_nonzero_avg, AvgValue))
+met <- met %>%
+  left_join(season_hourly_avg, by = c("season", "hour")) %>%
+  mutate(sp = if_else(sp == 0 & !is.na(AvgValue), AvgValue, sp)) %>%
+  select(-AvgValue)
+met$tcc[is.na(met$tcc)] <- 0
+sum(is.na(met$tcc))
+overall_nonzero_avg <- mean(met$tcc[met$tcc != 0], na.rm = TRUE)
+season_hourly_avg <- met %>%
+  filter(tcc != 0) %>%
+  group_by(season, hour) %>%
+  summarise(AvgValue = mean(tcc, na.rm = TRUE), .groups = 'drop') %>%
+  mutate(AvgValue = if_else(is.na(AvgValue), overall_nonzero_avg, AvgValue))
+met <- met %>%
+  left_join(season_hourly_avg, by = c("season", "hour")) %>%
+  mutate(tcc = if_else(tcc == 0 & !is.na(AvgValue), AvgValue, tcc)) %>%
+  select(-AvgValue)
+met$blh[is.na(met$blh)] <- 0
+sum(is.na(met$blh))
+overall_nonzero_avg <- mean(met$tcc[met$blh != 0], na.rm = TRUE)
+season_hourly_avg <- met %>%
+  filter(blh != 0) %>%
+  group_by(season, hour) %>%
+  summarise(AvgValue = mean(blh, na.rm = TRUE), .groups = 'drop') %>%
+  mutate(AvgValue = if_else(is.na(AvgValue), overall_nonzero_avg, AvgValue))
+
+met <- met %>%
+  left_join(season_hourly_avg, by = c("season", "hour")) %>%
+  mutate(blh = if_else(blh == 0 & !is.na(AvgValue), AvgValue, blh)) %>%
+  select(-AvgValue)
+met$slhf[is.na(met$slhf)] <- 0
+sum(is.na(met$slhf))
+overall_nonzero_avg <- mean(met$tcc[met$slhf != 0], na.rm = TRUE)
+season_hourly_avg <- met %>%
+  filter(slhf != 0) %>%
+  group_by(season, hour) %>%
+  summarise(AvgValue = mean(slhf, na.rm = TRUE), .groups = 'drop') %>%
+  mutate(AvgValue = if_else(is.na(AvgValue), overall_nonzero_avg, AvgValue))
+
+met <- met %>%
+  left_join(season_hourly_avg, by = c("season", "hour")) %>%
+  mutate(slhf = if_else(slhf == 0 & !is.na(AvgValue), AvgValue, slhf)) %>%
+  select(-AvgValue)
+met$r[is.na(met$r)] <- 0
+sum(is.na(met$r))
+
+overall_nonzero_avg <- mean(met$r[met$r != 0], na.rm = TRUE)
+season_hourly_avg <- met %>%
+  filter(r != 0) %>%
+  group_by(season, hour) %>%
+  summarise(AvgValue = mean(r, na.rm = TRUE), .groups = 'drop') %>%
+  mutate(AvgValue = if_else(is.na(AvgValue), overall_nonzero_avg, AvgValue))
+
+met <- met %>%
+  left_join(season_hourly_avg, by = c("season", "hour")) %>%
+  mutate(r = if_else(r == 0 & !is.na(AvgValue), AvgValue, r)) %>%
+  select(-AvgValue)
+met$tcwv[is.na(met$tcwv)] <- 0
+sum(is.na(met$tcwv))
+
+overall_nonzero_avg <- mean(met$tcwv[met$tcwv != 0], na.rm = TRUE)
+
+season_hourly_avg <- met %>%
+  filter(tcwv != 0) %>%
+  group_by(season, hour) %>%
+  summarise(AvgValue = mean(tcwv, na.rm = TRUE), .groups = 'drop') %>%
+  mutate(AvgValue = if_else(is.na(AvgValue), overall_nonzero_avg, AvgValue))
+
+met <- met %>%
+  left_join(season_hourly_avg, by = c("season", "hour")) %>%
+  mutate(tcwv = if_else(tcwv == 0 & !is.na(AvgValue), AvgValue, tcwv)) %>%
+  select(-AvgValue)
+met$tcrw[is.na(met$tcrw)] <- 0
+sum(is.na(met$tcrw))
+
+overall_nonzero_avg <- mean(met$tcrw[met$tcrw != 0], na.rm = TRUE)
+
+season_hourly_avg <- met %>%
+  filter(tcrw != 0) %>%
+  group_by(season, hour) %>%
+  summarise(AvgValue = mean(tcrw, na.rm = TRUE), .groups = 'drop') %>%
+  mutate(AvgValue = if_else(is.na(AvgValue), overall_nonzero_avg, AvgValue))
+
+met <- met %>%
+  left_join(season_hourly_avg, by = c("season", "hour")) %>%
+  mutate(tcrw = if_else(tcrw == 0 & !is.na(AvgValue), AvgValue, tcrw)) %>%
+  select(-AvgValue)
+met$tclw[is.na(met$tclw)] <- 0
+sum(is.na(met$tclw))
+overall_nonzero_avg <- mean(met$tclw[met$tclw != 0], na.rm = TRUE)
+season_hourly_avg <- met %>%
+  filter(tclw != 0) %>%
+  group_by(season, hour) %>%
+  summarise(AvgValue = mean(tclw, na.rm = TRUE), .groups = 'drop') %>%
+  mutate(AvgValue = if_else(is.na(AvgValue), overall_nonzero_avg, AvgValue))
+
+met <- met %>%
+  left_join(season_hourly_avg, by = c("season", "hour")) %>%
+  mutate(tclw = if_else(tclw == 0 & !is.na(AvgValue), AvgValue, tclw)) %>%
+  select(-AvgValue)
+met$tciw[is.na(met$tciw)] <- 0
+sum(is.na(met$tciw))
+overall_nonzero_avg <- mean(met$tciw[met$tciw != 0], na.rm = TRUE)
+season_hourly_avg <- met %>%
+  filter(tciw != 0) %>%
+  group_by(season, hour) %>%
+  summarise(AvgValue = mean(tciw, na.rm = TRUE), .groups = 'drop') %>%
+  mutate(AvgValue = if_else(is.na(AvgValue), overall_nonzero_avg, AvgValue))
+
+met <- met %>%
+  left_join(season_hourly_avg, by = c("season", "hour")) %>%
+  mutate(tciw = if_else(tciw == 0 & !is.na(AvgValue), AvgValue, tciw)) %>%
+  select(-AvgValue)
+met$h[is.na(met$h)] <- 0
+sum(is.na(met$h))
+
+overall_nonzero_avg <- mean(met$h[met$h != 0], na.rm = TRUE)
+season_hourly_avg <- met %>%
+  filter(h != 0) %>%
+  group_by(season, hour) %>%
+  summarise(AvgValue = mean(h, na.rm = TRUE), .groups = 'drop') %>%
+  mutate(AvgValue = if_else(is.na(AvgValue), overall_nonzero_avg, AvgValue))
+
+met <- met %>%
+  left_join(season_hourly_avg, by = c("season", "hour")) %>%
+  mutate(h = if_else(h== 0 & !is.na(AvgValue), AvgValue, h)) %>%
+  select(-AvgValue)
+met$ssrd[is.na(met$ssrd)] <- 0
+daytime_avg <- met %>%
+  filter(hour >= 6, hour < 18, ssrd != 0) %>%
+  summarise(daytime_avg = mean(ssrd)) %>%
+  pull(daytime_avg)
+nighttime_avg <- met %>%
+  filter((hour < 6 | hour >= 18), ssrd != 0) %>%
+  summarise(nighttime_avg = mean(ssrd)) %>%
+  pull(nighttime_avg)
+met <- met %>%
+  mutate(ssrd = if_else(hour >= 6 & hour < 18 & ssrd == 0, daytime_avg, ssrd))
+met <- met %>%
+  mutate(ssrd = if_else((hour < 6 | hour >= 18) & ssrd == 0, nighttime_avg, ssrd))
+zero_count <- sum(met == 0, na.rm = TRUE)
+print(paste("Number of met values that are still 0:", zero_count))
+zero_rows <- met %>%
+  filter(if_any(-c(hour, low_cloud), ~ . == 0))
+print("Rows with 0 values in non-hour columns:")
+print(zero_rows)
+O3<-df_m[,c('date_time','date','year','season','month','hour','day','O3',
+                  'PM10','PM2.5','O3_8','NO2','SO2','CO')]
+num_missing_values <- sum(is.na(O3))
+missing_values_indices <- which(is.na(O3), arr.ind = TRUE)
+print(missing_values_indices)
+O3$date_time<-as.POSIXct(O3$date_time,tz='Asia/Shanghai')
+duplicated_indices <- which(duplicated(O3$date_time) | duplicated(O3$date_time, fromLast = TRUE))
+O3 <- O3[!duplicated(O3$date_time), ]
+O3$date_time <- lubridate::with_tz(O3$date_time, tz = "Asia/Shanghai")
+start_date <- with_tz(as.POSIXct("2018-12-01 00:00"), tzone = "Asia/Shanghai")
+end_date <- with_tz(as.POSIXct("2022-12-31 23:00"), tzone = "Asia/Shanghai")
+O3 <- O3 %>%
+  filter(date_time >= start_date, date_time <= end_date)
+met <- met %>%
+  filter(datetime >= start_date, datetime <= end_date, !is.na(datetime)
+met$date_time <- format(met$date_time, "%Y-%m-%d %H:%M:%S")
+met$char_datetime<-as.character(met$date_time)
+O3$date_time <- format(O3$date_time, "%Y-%m-%d %H:%M:%S")
+O3$char_datetime<-as.character(O3$date_time)
+O3_met<-merge(met,O3,by=c("char_datetime",'date_time','month','hour','season'),all=TRUE)
+colnames(O3_met)
+names(O3_met)[names(O3_met) == "2m_temperature"] <- "T2M"
+names(O3_met)[names(O3_met) == "X1"] <- "stamp"
