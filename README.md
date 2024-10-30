@@ -9,5 +9,5 @@ The lightweight code size and efficient training performance of the random fores
 > GitHub 链接: https://github.com/Soffier/Random-forest
  ## 重要说明
 
-请注意，本项目中的代码文件并未形成一个封装好的软件。使用这些代码时，请确保理解每个方法的实现细节。如果您在您的研究或项目中引用了其中的方法，也希望参照上述参考文献引用；
-由于时间关系，如果对这篇论文感兴趣的研究者可以联系提供更清晰和细致的代码片段，联系邮箱：martina@mail.ustc.edu.cn
+>  请注意，本项目中的代码文件并未形成一个封装好的软件。使用这些代码时，请确保理解每个方法的实现细节。如果您在您的研究或项目中引用了其中的方法，也希望参照上述参考文献引用；
+>  由于时间关系，如果对这篇论文感兴趣的研究者可以联系提供更清晰和细致的代码片段，联系邮箱：martina@mail.ustc.edu.cn
